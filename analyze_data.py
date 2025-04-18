@@ -2,20 +2,45 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import argparse
 
-# Change directory to the specified path
-os.chdir('/Users/macbookpro/Desktop/LKTI')
+# Set up argument parsing
+parser = argparse.ArgumentParser(description='Analyze LKTI data from Excel sheets')
+parser.add_argument('--sheet', type=str, choices=['Daun Kelor', 'Buah Naga'], default='Daun Kelor',
+                    help='Sheet name to analyze (default: Daun Kelor)')
+parser.add_argument('--output-prefix', type=str, default='',
+                    help='Prefix for output filenames (default: none)')
+args = parser.parse_args()
 
-# Display the current working directory and confirm file exists
-print("Current Working Directory:", os.getcwd())
+# Determine the sheet to analyze
+sheet_name = args.sheet
+output_prefix = args.output_prefix
+if output_prefix:
+    output_prefix += "_"
+
+print(f"Analyzing data from sheet: {sheet_name}")
+
+# Get current working directory
+current_dir = os.getcwd()
+print("Current Working Directory:", current_dir)
+
+# Find the Excel file
 file_path = "Data LKTI.xlsx"
-print(f"Does file exist? {os.path.exists(file_path)}")
+if not os.path.exists(file_path):
+    # Check for the file in the desktop location (previous hardcoded path)
+    desktop_path = '/Users/macbookpro/Desktop/LKTI/Data LKTI.xlsx'
+    if os.path.exists(desktop_path):
+        file_path = desktop_path
+    else:
+        print(f"Error: Excel file not found in current directory or at {desktop_path}")
+        exit(1)
+
+print(f"Using data file: {file_path}")
 
 # Read the Excel file
 try:
-    print(f"Reading file: {file_path}")
-    # Skip any potential header rows that could contain strings like 'Value'
-    df = pd.read_excel(file_path)
+    print(f"Reading file: {file_path}, sheet: {sheet_name}")
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
     # Display basic information about the data
     print("\n--- Basic Information ---")
@@ -129,7 +154,7 @@ try:
                 print("\n--- Group statistics by Dosage ---")
                 print(grouped)
                 
-                # Create plots
+                # Create plots with appropriate output filenames
                 fig, axes = plt.subplots(3, 1, figsize=(10, 15))
                 
                 # Body Weight Gain vs Dosage
@@ -151,8 +176,8 @@ try:
                 axes[2].set_ylabel('FCR')
                 
                 plt.tight_layout()
-                plt.savefig('dosage_comparison.png')
-                print("\nCreated visualization: dosage_comparison.png")
+                plt.savefig(f'{output_prefix}dosage_comparison_{sheet_name.replace(" ", "_")}.png')
+                print(f"\nCreated visualization: {output_prefix}dosage_comparison_{sheet_name.replace(" ", "_")}.png")
                 
                 # Try to perform ANOVA if scipy is available
                 try:
@@ -178,7 +203,7 @@ try:
             else:
                 print("\nDosage appears to be continuous. Performing regression analysis.")
                 
-                # Create scatter plots
+                # Create scatter plots with appropriate output filenames
                 fig, axes = plt.subplots(3, 1, figsize=(10, 15))
                 
                 # Body Weight Gain vs Dosage
@@ -200,8 +225,8 @@ try:
                 axes[2].set_ylabel('FCR')
                 
                 plt.tight_layout()
-                plt.savefig('dosage_comparison.png')
-                print("\nCreated visualization: dosage_comparison.png")
+                plt.savefig(f'{output_prefix}dosage_comparison_{sheet_name.replace(" ", "_")}.png')
+                print(f"\nCreated visualization: {output_prefix}dosage_comparison_{sheet_name.replace(" ", "_")}.png")
                 
                 # Try to perform regression analysis if scipy is available
                 try:
@@ -221,7 +246,7 @@ try:
                 except ImportError:
                     print("\nScientific Python (scipy) is not installed. Cannot perform regression analysis.")
 
-            # Create correlation heatmap
+            # Create correlation heatmap with appropriate output filename
             plt.figure(figsize=(8, 6))
             plt.imshow(analysis_df.corr(), cmap='coolwarm', vmin=-1, vmax=1)
             plt.colorbar()
@@ -232,10 +257,10 @@ try:
                     plt.text(j, i, f"{analysis_df.corr().iloc[i, j]:.2f}", ha="center", va="center", color="black")
             plt.title('Correlation Matrix')
             plt.tight_layout()
-            plt.savefig('correlation_matrix.png')
-            print("Created visualization: correlation_matrix.png")
+            plt.savefig(f'{output_prefix}correlation_matrix_{sheet_name.replace(" ", "_")}.png')
+            print(f"Created visualization: {output_prefix}correlation_matrix_{sheet_name.replace(" ", "_")}.png")
             
-            print("\n--- Summary of Findings ---")
+            print(f"\n--- Summary of Findings for {sheet_name} ---")
             for metric in ['Body_Weight_Gain', 'Carcass_Percentage', 'FCR']:
                 corr = correlations[metric]
                 if abs(corr) > 0.7:
@@ -249,7 +274,7 @@ try:
                 
                 print(f"- {metric} has a {strength} {direction} correlation ({corr:.2f}) with Dosage.")
                 
-            print("\nCheck the created visualizations (dosage_comparison.png and correlation_matrix.png) for graphical representation of the relationships.")
+            print(f"\nCheck the created visualizations ({output_prefix}dosage_comparison_{sheet_name.replace(' ', '_')}.png and {output_prefix}correlation_matrix_{sheet_name.replace(' ', '_')}.png) for graphical representation of the relationships.")
 
 except Exception as e:
     print(f"An error occurred: {e}")

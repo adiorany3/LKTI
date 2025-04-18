@@ -21,6 +21,15 @@ st.write("Interactive analysis of dosage effects on Body Weight Gain, Carcass Pe
 # Sidebar for settings
 with st.sidebar:
     st.header("Settings")
+    
+    # Add sheet selection to the sidebar
+    st.subheader("Data Selection")
+    sheet_selection = st.radio(
+        "Select data source:",
+        ["Daun Kelor", "Buah Naga"],
+        index=0
+    )
+    
     confidence_level = st.slider("Confidence Level for Statistical Tests", 
                                 min_value=0.80, max_value=0.99, value=0.95, step=0.01)
     alpha = 1 - confidence_level
@@ -36,10 +45,14 @@ def find_column(keywords, df_columns):
 
 # Function to load and prepare data
 @st.cache_data
-def load_data(file_path):
+def load_data(file_path, sheet_name=None):
     try:
-        df = pd.read_excel(file_path)
-        return df
+        if sheet_name:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            return df
+        else:
+            # Return a dictionary of all dataframes if no sheet specified
+            return pd.read_excel(file_path, sheet_name=None)
     except Exception as e:
         st.error(f"Error loading file: {e}")
         return None
@@ -83,7 +96,7 @@ def analyze_data(df):
 file_path = "Data LKTI.xlsx"
 
 if os.path.exists(file_path):
-    df = load_data(file_path)
+    df = load_data(file_path, sheet_name=sheet_selection)
     st.success(f"✅ Loaded data file: {file_path}")
 else:
     st.error(f"⚠️ Data file '{file_path}' not found. Please ensure the file exists in the current directory.")
