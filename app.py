@@ -157,6 +157,12 @@ with tab1:
             # Group data by dosage and calculate mean
             grouped = analysis_df.groupby('Dosage')[metric].mean().reset_index()
             
+            # Find minimum FCR value if metric is FCR
+            if metric == "FCR":
+                min_fcr_row = grouped.loc[grouped[metric].idxmin()]
+                min_fcr_dosage = min_fcr_row['Dosage']
+                min_fcr_value = min_fcr_row[metric]
+            
             # Create interactive bar chart with hover tooltips
             fig = px.bar(
                 grouped, 
@@ -180,6 +186,36 @@ with tab1:
                 yaxis_title=metric.replace('_', ' '),
                 hovermode='closest'
             )
+            
+            # Highlight the bar with minimum FCR value if metric is FCR
+            if metric == "FCR":
+                # Add a marker to highlight the minimum FCR
+                fig.add_annotation(
+                    x=min_fcr_dosage,
+                    y=min_fcr_value,
+                    text=f"Min FCR: {min_fcr_value:.2f}",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor="red",
+                    font=dict(size=12, color="red", family="Arial Black"),
+                    bgcolor="rgba(255, 255, 255, 0.8)",
+                    bordercolor="red",
+                    borderwidth=1
+                )
+                
+                # Highlight the bar with minimum FCR
+                for i, bar in enumerate(fig.data[0].x):
+                    if bar == min_fcr_dosage:
+                        fig.data[0].marker.color = ['lightblue' if x != min_fcr_dosage else 'red' 
+                                                   for x in fig.data[0].x]
+                        break
+                
+                # Add explanatory text
+                st.markdown(f"""
+                ### FCR Analysis:
+                - **Minimum FCR Value**: {min_fcr_value:.2f} at dosage {min_fcr_dosage}
+                - **Interpretation**: Lower FCR values indicate better feed conversion efficiency
+                """)
         else:
             st.warning("Bar charts are better for categorical dosages. Consider using a scatter plot instead.")
             # Create a histogram with hover info
@@ -321,6 +357,26 @@ with tab1:
             temp_df = analysis_df.copy()
             temp_df['Dosage'] = temp_df['Dosage'].astype(str)
             
+            # Find minimum FCR value if metric is FCR
+            if metric == "FCR":
+                # Group by dosage to find the group with the minimum median FCR
+                fcr_by_dosage = analysis_df.groupby('Dosage')[metric].median()
+                min_fcr_dosage = fcr_by_dosage.idxmin()
+                min_fcr_value = fcr_by_dosage.min()
+                
+                # Get all FCR values for the dosage with minimum median FCR
+                min_dosage_fcr_values = analysis_df[analysis_df['Dosage'] == min_fcr_dosage][metric]
+                min_individual_fcr = min_dosage_fcr_values.min()
+                
+                # Add explanatory text
+                st.markdown(f"""
+                ### FCR Analysis:
+                - **Dosage with Lowest Median FCR**: {min_fcr_dosage}
+                - **Median FCR**: {min_fcr_value:.2f}
+                - **Minimum Individual FCR**: {min_individual_fcr:.2f}
+                - **Interpretation**: Lower FCR values indicate better feed conversion efficiency
+                """)
+            
             # Create interactive box plot
             fig = px.box(
                 temp_df, 
@@ -337,6 +393,57 @@ with tab1:
                 hovertemplate='<b>Dosage</b>: %{x}<br>'+
                               f'<b>{metric.replace("_", " ")}</b>: %{{y:.2f}}<extra></extra>'
             )
+            
+            # Highlight the box with minimum FCR value if metric is FCR
+            if metric == "FCR":
+                # Highlight the box with minimum median FCR
+                for i, box in enumerate(fig.data[0].x):
+                    if box == str(min_fcr_dosage):
+                        # Change color of box with minimum FCR
+                        fig.data[0].fillcolor = 'rgba(255, 255, 255, 0.5)'  # Make all boxes transparent
+                        
+                        # Add annotation for the minimum median FCR
+                        fig.add_annotation(
+                            x=str(min_fcr_dosage),
+                            y=min_fcr_value,
+                            text=f"Min Median FCR: {min_fcr_value:.2f}",
+                            showarrow=True,
+                            arrowhead=2,
+                            arrowcolor="red",
+                            font=dict(size=12, color="red", family="Arial Black"),
+                            bgcolor="rgba(255, 255, 255, 0.8)",
+                            bordercolor="red",
+                            borderwidth=1
+                        )
+                        
+                        # Add annotation for the minimum individual FCR point
+                        fig.add_annotation(
+                            x=str(min_fcr_dosage),
+                            y=min_individual_fcr,
+                            text=f"Min FCR: {min_individual_fcr:.2f}",
+                            showarrow=True,
+                            arrowhead=2,
+                            arrowcolor="red",
+                            font=dict(size=10, color="red"),
+                            bgcolor="rgba(255, 255, 255, 0.8)",
+                            bordercolor="red",
+                            borderwidth=1,
+                            ax=-40,
+                            ay=20
+                        )
+                        
+                        # Add scatter trace to highlight the box with minimum FCR
+                        fig.add_traces(
+                            go.Box(
+                                x=[str(min_fcr_dosage)],
+                                y=min_dosage_fcr_values,
+                                name="Min FCR Dosage",
+                                marker=dict(color="red"),
+                                boxmean=True,
+                                showlegend=False
+                            )
+                        )
+                        break
         else:
             st.warning("Box plots work better with categorical data. Using histogram instead.")
             # Create a histogram with hover info
