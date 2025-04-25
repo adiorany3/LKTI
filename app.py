@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import io
 from matplotlib.figure import Figure
 import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Set page configuration and title
 st.set_page_config(
@@ -150,31 +151,81 @@ with tab1:
         ["Body_Weight_Gain", "Carcass_Percentage", "FCR"]
     )
     
-    # Create the visualization
-    fig = Figure(figsize=(10, 6))
-    ax = fig.add_subplot(111)
-    
+    # Create interactive visualizations with hover tooltips using Plotly
     if viz_type == "Bar Chart":
         if is_categorical:
             # Group data by dosage and calculate mean
             grouped = analysis_df.groupby('Dosage')[metric].mean().reset_index()
-            ax.bar(grouped['Dosage'].astype(str), grouped[metric])
-            ax.set_xlabel('Dosage')
-            ax.set_ylabel(metric.replace('_', ' '))
-            ax.set_title(f'{metric.replace("_", " ")} by Dosage')
+            
+            # Create interactive bar chart with hover tooltips
+            fig = px.bar(
+                grouped, 
+                x='Dosage', 
+                y=metric,
+                title=f'{metric.replace("_", " ")} by Dosage',
+                labels={'Dosage': 'Dosage', metric: metric.replace('_', ' ')},
+                hover_data={metric: ':.2f'},  # Show value with 2 decimal places on hover
+                text=metric  # Show values on bars
+            )
+            
+            # Customize the hover template
+            fig.update_traces(
+                hovertemplate='<b>Dosage</b>: %{x}<br>'+
+                              f'<b>{metric.replace("_", " ")}</b>: %{{y:.2f}}<extra></extra>'
+            )
+            
+            # Format the appearance
+            fig.update_layout(
+                xaxis_title='Dosage',
+                yaxis_title=metric.replace('_', ' '),
+                hovermode='closest'
+            )
         else:
             st.warning("Bar charts are better for categorical dosages. Consider using a scatter plot instead.")
-            # Create a histogram instead
-            ax.hist(analysis_df['Dosage'], bins=10, alpha=0.7)
-            ax.set_xlabel('Dosage')
-            ax.set_ylabel('Frequency')
-            ax.set_title('Distribution of Dosage')
+            # Create a histogram with hover info
+            fig = px.histogram(
+                analysis_df, 
+                x='Dosage',
+                nbins=10,
+                title='Distribution of Dosage',
+                labels={'Dosage': 'Dosage', 'count': 'Frequency'},
+                hover_data={'Dosage': ':.2f'}
+            )
     
     elif viz_type == "Scatter Plot":
-        ax.scatter(analysis_df['Dosage'], analysis_df[metric])
-        ax.set_xlabel('Dosage')
-        ax.set_ylabel(metric.replace('_', ' '))
-        ax.set_title(f'{metric.replace("_", " ")} vs Dosage')
+        # Calculate optimal value based on the metric
+        if metric == "FCR":
+            # For FCR, lower is better (feed conversion ratio)
+            optimal_row = analysis_df.loc[analysis_df[metric].idxmin()]
+            optimal_type = "minimum"
+        else:
+            # For other metrics like Body Weight Gain and Carcass Percentage, higher is better
+            optimal_row = analysis_df.loc[analysis_df[metric].idxmax()]
+            optimal_type = "maximum"
+        
+        optimal_dosage = optimal_row['Dosage']
+        optimal_value = optimal_row[metric]
+        
+        # Create interactive scatter plot with hover tooltips
+        fig = px.scatter(
+            analysis_df, 
+            x='Dosage', 
+            y=metric,
+            title=f'{metric.replace("_", " ")} vs Dosage',
+            labels={'Dosage': 'Dosage', metric: metric.replace('_', ' ')},
+            hover_data={  # Customize what appears in tooltip
+                'Dosage': ':.2f',
+                metric: ':.2f'
+            }
+        )
+        
+        # Customize the hover template
+        fig.update_traces(
+            hovertemplate='<b>Dosage</b>: %{x:.2f}<br>'+
+                         f'<b>{metric.replace("_", " ")}</b>: %{{y:.2f}}<br>'+
+                         f'<b>Optimal Dosage</b>: {optimal_dosage:.2f}<br>'+
+                         f'<b>Optimal Value</b>: {optimal_value:.2f}<extra></extra>'
+        )
         
         # Add regression line if not categorical
         if not is_categorical:
@@ -182,35 +233,132 @@ with tab1:
             slope, intercept, r_value, p_value, std_err = stats.linregress(
                 analysis_df['Dosage'], analysis_df[metric]
             )
-            x = np.array([min(analysis_df['Dosage']), max(analysis_df['Dosage'])])
-            ax.plot(x, intercept + slope * x, 'r', label=f'y={slope:.2f}x+{intercept:.2f}')
-            ax.legend()
-    
+            
+            # Generate points for regression line
+            x_range = np.linspace(min(analysis_df['Dosage']), max(analysis_df['Dosage']), 100)
+            y_range = intercept + slope * x_range
+            
+            # Add regression line to the plot
+            fig.add_traces(
+                go.Scatter(
+                    x=x_range, 
+                    y=y_range, 
+                    mode='lines', 
+                    name=f'y = {slope:.2f}x + {intercept:.2f} (R² = {r_value**2:.2f})',
+                    line=dict(color='red')
+                )
+            )
+        
+        # Add a marker for the optimal value
+        fig.add_traces(
+            go.Scatter(
+                x=[optimal_dosage],
+                y=[optimal_value],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color='green',
+                    symbol='star',
+                    line=dict(width=2, color='black')
+                ),
+                name=f'Optimal Value ({optimal_type})',
+                hoverinfo='skip'  # Skip default hover to prevent duplicate tooltip
+            )
+        )
+        
+        # Add annotation for optimal point
+        fig.add_annotation(
+            x=optimal_dosage,
+            y=optimal_value,
+            text="Optimal",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=2,
+            arrowcolor="black",
+            ax=20,
+            ay=-30,
+            font=dict(size=12, color="black"),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="black",
+            borderwidth=1,
+            borderpad=4
+        )
+        
+        # Add a horizontal line at optimal value
+        fig.add_shape(
+            type="line",
+            x0=min(analysis_df['Dosage']),
+            y0=optimal_value,
+            x1=max(analysis_df['Dosage']),
+            y1=optimal_value,
+            line=dict(
+                color="green",
+                width=1,
+                dash="dash",
+            ),
+            name="Optimal Value Line"
+        )
+        
+        # Add a vertical line at optimal dosage
+        fig.add_shape(
+            type="line",
+            x0=optimal_dosage,
+            y0=min(analysis_df[metric]),
+            x1=optimal_dosage,
+            y1=max(analysis_df[metric]),
+            line=dict(
+                color="green",
+                width=1,
+                dash="dash",
+            ),
+            name="Optimal Dosage Line"
+        )
+
     elif viz_type == "Box Plot":
         if is_categorical:
             # Convert dosage to string for better display
             temp_df = analysis_df.copy()
             temp_df['Dosage'] = temp_df['Dosage'].astype(str)
-            sns.boxplot(data=temp_df, x='Dosage', y=metric, ax=ax)
-            ax.set_title(f'Distribution of {metric.replace("_", " ")} by Dosage')
+            
+            # Create interactive box plot
+            fig = px.box(
+                temp_df, 
+                x='Dosage', 
+                y=metric,
+                title=f'Distribution of {metric.replace("_", " ")} by Dosage',
+                labels={'Dosage': 'Dosage', metric: metric.replace('_', ' ')},
+                points='all',  # Show all points
+                hover_data={metric: ':.2f'}  # Show exact value on hover
+            )
+            
+            # Customize the hover template
+            fig.update_traces(
+                hovertemplate='<b>Dosage</b>: %{x}<br>'+
+                              f'<b>{metric.replace("_", " ")}</b>: %{{y:.2f}}<extra></extra>'
+            )
         else:
             st.warning("Box plots work better with categorical data. Using histogram instead.")
-            # Create a histogram
-            ax.hist(analysis_df[metric], bins=10, alpha=0.7)
-            ax.set_xlabel(metric.replace('_', ' '))
-            ax.set_ylabel('Frequency')
-            ax.set_title(f'Distribution of {metric.replace("_", " ")}')
+            # Create a histogram with hover info
+            fig = px.histogram(
+                analysis_df, 
+                x=metric,
+                nbins=10,
+                title=f'Distribution of {metric.replace("_", " ")}',
+                labels={metric: metric.replace('_', ' '), 'count': 'Frequency'},
+                hover_data={metric: ':.2f'}
+            )
     
-    # Display the plot
-    fig.tight_layout()
-    st.pyplot(fig)
+    # Display the interactive plot
+    st.plotly_chart(fig, use_container_width=True)
     
     # Option to download the figure
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
+    buffer = io.BytesIO()
+    fig.write_image(buffer, format="png")
+    buffer.seek(0)
     st.download_button(
         label="Download Figure",
-        data=buf.getvalue(),
+        data=buffer.getvalue(),
         file_name=f"{metric.lower()}_plot.png",
         mime="image/png"
     )
@@ -301,25 +449,43 @@ with tab2:
                     else:
                         st.info(f"No significant relationship detected (α = {alpha:.2f})")
                     
-                    # Create and display regression plot
-                    fig = Figure(figsize=(8, 5))
-                    ax = fig.add_subplot(111)
+                    # Create interactive regression plot with hover tooltips
+                    fig = px.scatter(
+                        analysis_df, 
+                        x='Dosage', 
+                        y=metric,
+                        title=f'Regression: {metric.replace("_", " ")} vs Dosage',
+                        labels={'Dosage': 'Dosage', metric: metric.replace('_', ' ')},
+                        hover_data={
+                            'Dosage': ':.2f',
+                            metric: ':.2f'
+                        }
+                    )
                     
-                    # Scatter plot
-                    ax.scatter(analysis_df['Dosage'], analysis_df[metric])
+                    # Generate points for regression line
+                    x_range = np.linspace(min(analysis_df['Dosage']), max(analysis_df['Dosage']), 100)
+                    y_range = intercept + slope * x_range
                     
-                    # Regression line
-                    x = np.array([min(analysis_df['Dosage']), max(analysis_df['Dosage'])])
-                    ax.plot(x, intercept + slope * x, 'r', 
-                            label=f'y = {slope:.4f}x + {intercept:.4f} (R² = {r_value**2:.4f})')
+                    # Add regression line to the plot
+                    fig.add_traces(
+                        go.Scatter(
+                            x=x_range, 
+                            y=y_range, 
+                            mode='lines', 
+                            name=f'y = {slope:.4f}x + {intercept:.4f} (R² = {r_value**2:.4f})',
+                            line=dict(color='red')
+                        )
+                    )
                     
-                    ax.set_xlabel('Dosage')
-                    ax.set_ylabel(metric.replace('_', ' '))
-                    ax.set_title(f'Regression: {metric.replace("_", " ")} vs Dosage')
-                    ax.legend()
+                    # Customize hover template
+                    fig.update_traces(
+                        selector=dict(type='scatter', mode='markers'),
+                        hovertemplate='<b>Dosage</b>: %{x:.2f}<br>'+
+                                      f'<b>{metric.replace("_", " ")}</b>: %{{y:.2f}}<extra></extra>'
+                    )
                     
-                    fig.tight_layout()
-                    st.pyplot(fig)
+                    # Display the interactive plot
+                    st.plotly_chart(fig, use_container_width=True)
         except ImportError:
             st.warning("Regression analysis requires SciPy. Install it with: pip install scipy")
 
@@ -333,37 +499,40 @@ with tab3:
     st.subheader("Correlation Matrix")
     st.dataframe(corr_matrix.style.background_gradient(cmap='coolwarm'), use_container_width=True)
     
-    # Create correlation heatmap
-    fig = Figure(figsize=(10, 8))
-    ax = fig.add_subplot(111)
+    # Create interactive correlation heatmap with hover
+    fig = px.imshow(
+        corr_matrix,
+        text_auto='.2f',  # Show correlation values on cells
+        color_continuous_scale='RdBu_r',  # Red-Blue scale, reversed
+        labels=dict(color="Correlation"),
+        x=corr_matrix.columns,
+        y=corr_matrix.columns,
+        title='Correlation Matrix'
+    )
     
-    # Generate heatmap
-    im = ax.imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1)
-    fig.colorbar(im)
+    # Customize hover template
+    fig.update_traces(
+        hovertemplate='<b>x</b>: %{x}<br><b>y</b>: %{y}<br><b>Correlation</b>: %{z:.2f}<extra></extra>'
+    )
     
-    # Add labels
-    ax.set_xticks(range(len(corr_matrix.columns)))
-    ax.set_yticks(range(len(corr_matrix.columns)))
-    ax.set_xticklabels(corr_matrix.columns, rotation=45)
-    ax.set_yticklabels(corr_matrix.columns)
+    # Set layout
+    fig.update_layout(
+        width=700,
+        height=600,
+        xaxis_title="",
+        yaxis_title="",
+    )
     
-    # Add correlation values
-    for i in range(len(corr_matrix.columns)):
-        for j in range(len(corr_matrix.columns)):
-            text = ax.text(j, i, f"{corr_matrix.iloc[i, j]:.2f}",
-                          ha="center", va="center", color="black")
-    
-    ax.set_title('Correlation Matrix')
-    fig.tight_layout()
-    
-    st.pyplot(fig)
+    # Display the interactive heatmap
+    st.plotly_chart(fig, use_container_width=True)
     
     # Download correlation matrix
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
+    buffer = io.BytesIO()
+    fig.write_image(buffer, format="png")
+    buffer.seek(0)
     st.download_button(
         label="Download Correlation Matrix",
-        data=buf.getvalue(),
+        data=buffer.getvalue(),
         file_name="correlation_matrix.png",
         mime="image/png"
     )
